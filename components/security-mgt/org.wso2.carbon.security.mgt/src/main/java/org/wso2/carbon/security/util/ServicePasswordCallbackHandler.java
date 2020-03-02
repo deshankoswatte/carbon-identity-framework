@@ -82,7 +82,7 @@ public class ServicePasswordCallbackHandler implements CallbackHandler {
                 if (callbacks[i] instanceof WSPasswordCallback) {
                     WSPasswordCallback passwordCallback = (WSPasswordCallback) callbacks[i];
 
-                    String username = passwordCallback.getIdentifer();
+                    String username = passwordCallback.getIdentifier();
                     String receivedPasswd = null;
                     switch (passwordCallback.getUsage()) {
 
@@ -97,7 +97,7 @@ public class ServicePasswordCallbackHandler implements CallbackHandler {
                             passwordCallback.setPassword(password);
 
                             break;
-                        case WSPasswordCallback.KERBEROS_TOKEN:
+                        case WSPasswordCallback.SECRET_KEY:
                             passwordCallback.setPassword(getServicePrincipalPassword());
                             break;
                         case WSPasswordCallback.USERNAME_TOKEN_UNKNOWN:

@@ -25,27 +25,20 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.ws.security.WSSecurityException;
 import org.apache.ws.security.components.crypto.CredentialException;
 import org.apache.ws.security.components.crypto.Crypto;
+import org.apache.ws.security.components.crypto.CryptoType;
 import org.apache.ws.security.components.crypto.X509NameTokenizer;
 import org.wso2.carbon.context.CarbonContext;
 import org.wso2.carbon.core.util.KeyStoreManager;
 import org.wso2.carbon.registry.core.Registry;
 import org.wso2.carbon.security.SecurityServiceHolder;
 
+import javax.security.auth.callback.CallbackHandler;
 import java.io.ByteArrayInputStream;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigInteger;
-import java.security.GeneralSecurityException;
-import java.security.InvalidAlgorithmParameterException;
-import java.security.Key;
-import java.security.KeyStore;
-import java.security.KeyStoreException;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.security.NoSuchProviderException;
-import java.security.PrivateKey;
-import java.security.PublicKey;
+import java.security.*;
 import java.security.cert.CertPath;
 import java.security.cert.CertPathValidator;
 import java.security.cert.CertPathValidatorException;
@@ -186,299 +179,324 @@ public class ServerCrypto implements Crypto {
         return cert;
     }
 
-    @Override
-    /**
-     * @see org.apache.ws.security.components.crypto.Crypto#getX509Certificates(byte[], boolean)
-     */
-    public X509Certificate[] getX509Certificates(byte[] data, boolean reverse)
-            throws WSSecurityException {
-        InputStream in = new ByteArrayInputStream(data);
-        CertPath path;
-        try {
-            path = getCertificateFactory().generateCertPath(in);
-        } catch (CertificateException e) {
-            throw new WSSecurityException(WSSecurityException.SECURITY_TOKEN_UNAVAILABLE,
-                    "parseError");
-        }
-        List l = path.getCertificates();
-        X509Certificate[] certs = new X509Certificate[l.size()];
-        Iterator iterator = l.iterator();
-        for (int i = 0; i < l.size(); i++) {
-            certs[reverse ? (l.size() - 1 - i) : i] = (X509Certificate) iterator.next();
-        }
-        return certs;
-    }
+//    @Override
+//    /**
+//     * @see org.apache.ws.security.components.crypto.Crypto#getX509Certificates(byte[], boolean)
+//     */
+//    public X509Certificate[] getX509Certificates(byte[] data, boolean reverse)
+//            throws WSSecurityException {
+//        InputStream in = new ByteArrayInputStream(data);
+//        CertPath path;
+//        try {
+//            path = getCertificateFactory().generateCertPath(in);
+//        } catch (CertificateException e) {
+//            throw new WSSecurityException(WSSecurityException.SECURITY_TOKEN_UNAVAILABLE,
+//                    "parseError");
+//        }
+//        List l = path.getCertificates();
+//        X509Certificate[] certs = new X509Certificate[l.size()];
+//        Iterator iterator = l.iterator();
+//        for (int i = 0; i < l.size(); i++) {
+//            certs[reverse ? (l.size() - 1 - i) : i] = (X509Certificate) iterator.next();
+//        }
+//        return certs;
+//    }
 
-    @Override
-    /**
-     * @see org.apache.ws.security.components.crypto.Crypto#getCertificateData(boolean,
-     * java.security.cert.X509Certificate[])
-     */
-    public byte[] getCertificateData(boolean reverse, X509Certificate[] certs)
-            throws WSSecurityException {
-        List list = new ArrayList();
-        for (int i = 0; i < certs.length; i++) {
-            if (reverse) {
-                list.add(0, certs[i]);
-            } else {
-                list.add(certs[i]);
-            }
-        }
-        try {
-            CertPath path = getCertificateFactory().generateCertPath(list);
-            return path.getEncoded();
-        } catch (CertificateEncodingException e) {
-            throw new WSSecurityException(WSSecurityException.SECURITY_TOKEN_UNAVAILABLE,
-                    "encodeError");
-        } catch (CertificateException e) {
-            throw new WSSecurityException(WSSecurityException.SECURITY_TOKEN_UNAVAILABLE,
-                    "parseError");
-        }
-    }
+//    @Override
+//    /**
+//     * @see org.apache.ws.security.components.crypto.Crypto#getCertificateData(boolean,
+//     * java.security.cert.X509Certificate[])
+//     */
+//    public byte[] getCertificateData(boolean reverse, X509Certificate[] certs)
+//            throws WSSecurityException {
+//        List list = new ArrayList();
+//        for (int i = 0; i < certs.length; i++) {
+//            if (reverse) {
+//                list.add(0, certs[i]);
+//            } else {
+//                list.add(certs[i]);
+//            }
+//        }
+//        try {
+//            CertPath path = getCertificateFactory().generateCertPath(list);
+//            return path.getEncoded();
+//        } catch (CertificateEncodingException e) {
+//            throw new WSSecurityException(WSSecurityException.SECURITY_TOKEN_UNAVAILABLE,
+//                    "encodeError");
+//        } catch (CertificateException e) {
+//            throw new WSSecurityException(WSSecurityException.SECURITY_TOKEN_UNAVAILABLE,
+//                    "parseError");
+//        }
+//    }
 
     @Override
     /**
      * @see org.apache.ws.security.components.crypto.Crypto#getPrivateKey(java.lang.String,
      * java.lang.String)
      */
-    public PrivateKey getPrivateKey(String alias, String password) throws Exception {
+    public PrivateKey getPrivateKey(String alias, String password) throws WSSecurityException {
         if (alias == null) {
-            throw new Exception("alias is null");
+            throw new WSSecurityException("alias is null");
         }
-        boolean b = keystore.isKeyEntry(alias);
+        boolean b = false;
+        try {
+            b = keystore.isKeyEntry(alias);
+        } catch (KeyStoreException e) {
+            throw new WSSecurityException(e.getMessage(), e);
+        }
 
         if (!b) {
             log.error("Cannot find key for alias: " + alias);
-            throw new Exception("Cannot find key for alias: " + alias);
+            throw new WSSecurityException("Cannot find key for alias: " + alias);
         }
 
-        Key keyTmp = keystore.getKey(alias, password.toCharArray());
+        Key keyTmp = null;
+        try {
+            keyTmp = keystore.getKey(alias, password.toCharArray());
+        } catch (KeyStoreException | NoSuchAlgorithmException | UnrecoverableKeyException e) {
+            throw new WSSecurityException(e.getMessage(), e);
+        }
 
         if (!(keyTmp instanceof PrivateKey)) {
-            throw new Exception("Key is not a private key, alias: " + alias);
+            throw new WSSecurityException("Key is not a private key, alias: " + alias);
         }
 
         return (PrivateKey) keyTmp;
     }
 
     @Override
-    /**
-     * This first looks into the primary keystore and then looks at the other trust stores
-     *
-     * @see org.apache.ws.security.components.crypto.Crypto#getCertificates(String)
-     */
-    public X509Certificate[] getCertificates(String alias) throws WSSecurityException {
-
-        Certificate[] certs = new Certificate[0];
-        Certificate cert = null;
-        try {
-            if (this.keystore != null) {
-                // There's a chance that there can only be a set of trust stores
-                certs = keystore.getCertificateChain(alias);
-                if (certs == null || certs.length == 0) {
-                    // no cert chain, so lets check if getCertificate gives us a
-                    // result.
-                    cert = keystore.getCertificate(alias);
-                }
-            }
-
-            if (certs == null && cert == null && this.trustStores != null) {
-                // Now look into the trust stores
-                Iterator trustStoreIter = this.trustStores.iterator();
-                while (trustStoreIter.hasNext()) {
-                    KeyStore store = (KeyStore) trustStoreIter.next();
-                    certs = store.getCertificateChain(alias);
-                    if (certs != null) {
-                        break; // found the certs
-                    } else {
-                        cert = store.getCertificate(alias);
-                    }
-                }
-            }
-
-            if (certs == null && cert == null && this.cacerts != null) {
-                // There's a chance that there can only be a set of ca store
-                certs = cacerts.getCertificateChain(alias);
-                if (certs == null || certs.length == 0) {
-                    // no cert chain, so lets check if getCertificate gives us a
-                    // result.
-                    cert = cacerts.getCertificate(alias);
-                }
-            }
-
-            if (cert != null) {
-                certs = new Certificate[]{cert};
-            } else if (certs == null) {
-
-                // At this pont we don't have certs or a cert
-                return new X509Certificate[0];
-            }
-        } catch (KeyStoreException e) {
-            throw new WSSecurityException(WSSecurityException.FAILURE, "keystore");
-        }
-
-        X509Certificate[] x509certs = new X509Certificate[0];
-        if (certs != null) {
-            x509certs = new X509Certificate[certs.length];
-            for (int i = 0; i < certs.length; i++) {
-                x509certs[i] = (X509Certificate) certs[i];
-            }
-        }
-        return x509certs;
+    public boolean verifyTrust(X509Certificate[] x509Certificates) throws WSSecurityException {
+        return false;
     }
 
     @Override
-    /**
-     * @see org.apache.ws.security.components.crypto.Crypto#getAliasForX509Cert(java.security.cert.Certificate)
-     */
-    public String getAliasForX509Cert(Certificate cert) throws WSSecurityException {
-        try {
-            String alias = null;
-
-            if (this.keystore != null) {
-                alias = keystore.getCertificateAlias(cert);
-
-                // Use brute force search
-                if (alias == null) {
-                    alias = findAliasForCert(this.keystore, cert);
-                }
-            }
-
-            // Check the trust stores
-            if (alias == null && this.trustStores != null) {
-                for (Iterator trustStoreIter = this.trustStores.iterator(); trustStoreIter
-                        .hasNext(); ) {
-                    KeyStore store = (KeyStore) trustStoreIter.next();
-                    alias = store.getCertificateAlias(cert);
-                    if (alias != null) {
-                        break;
-                    }
-                }
-            }
-
-            // Use brute force search on the trust stores
-            if (alias == null && this.trustStores != null) {
-                for (Iterator trustStoreIter = this.trustStores.iterator(); trustStoreIter
-                        .hasNext(); ) {
-                    KeyStore store = (KeyStore) trustStoreIter.next();
-                    alias = this.findAliasForCert(store, cert);
-                    if (alias != null) {
-                        break;
-                    }
-                }
-            }
-
-            if (alias == null && this.cacerts != null) {
-                alias = cacerts.getCertificateAlias(cert);
-
-                // Use brute force search
-                if (alias == null) {
-                    alias = findAliasForCert(this.cacerts, cert);
-                }
-            }
-
-            if (alias != null) {
-                return alias;
-            }
-
-        } catch (KeyStoreException e) {
-            throw new WSSecurityException(WSSecurityException.FAILURE, "keystore");
-        }
-
-        return null;
-    }
-
-    private String findAliasForCert(KeyStore ks, Certificate cert) throws KeyStoreException {
-        Enumeration e = ks.aliases();
-        while (e.hasMoreElements()) {
-            String alias = (String) e.nextElement();
-            X509Certificate cert2 = (X509Certificate) ks.getCertificate(alias);
-            if (cert2.equals(cert)) {
-                return alias;
-            }
-        }
-        return null;
+    public boolean verifyTrust(X509Certificate[] x509Certificates, boolean b) throws WSSecurityException {
+        return false;
     }
 
     @Override
-    /**
-     * @see org.apache.ws.security.components.crypto.Crypto#getAliasForX509Cert(java.lang.String)
-     */
-    public String getAliasForX509Cert(String issuer) throws WSSecurityException {
-        String alias = getAliasForX509Cert(issuer, null, false, this.keystore);
-        if (alias == null) {
-            Iterator<KeyStore> ite = this.trustStores.iterator();
-            while (ite.hasNext()) {
-                KeyStore ks = ite.next();
-                alias = getAliasForX509Cert(issuer, null, false, ks);
-                if (alias != null) {
-                    break;
-                }
-            }
-
-        }
-        return alias;
+    public boolean verifyTrust(PublicKey publicKey) throws WSSecurityException {
+        return false;
     }
 
-    @Override
-    /**
-     * @see org.apache.ws.security.components.crypto.Crypto#getAliasForX509Cert(java.lang.String,
-     * java.math.BigInteger)
-     */
-    public String getAliasForX509Cert(String issuer, BigInteger serialNumber)
-            throws WSSecurityException {
-        String alias = getAliasForX509Cert(issuer, serialNumber, true, this.keystore);
-        if (alias == null) {
-            Iterator<KeyStore> ite = this.trustStores.iterator();
-            while (ite.hasNext()) {
-                KeyStore ks = ite.next();
-                alias = getAliasForX509Cert(issuer, serialNumber, true, ks);
-                if (alias != null) {
-                    break;
-                }
-            }
-        }
-        return alias;
-    }
+//    @Override
+//    /**
+//     * This first looks into the primary keystore and then looks at the other trust stores
+//     *
+//     * @see org.apache.ws.security.components.crypto.Crypto#getCertificates(String)
+//     */
+//    public X509Certificate[] getCertificates(String alias) throws WSSecurityException {
+//
+//        Certificate[] certs = new Certificate[0];
+//        Certificate cert = null;
+//        try {
+//            if (this.keystore != null) {
+//                // There's a chance that there can only be a set of trust stores
+//                certs = keystore.getCertificateChain(alias);
+//                if (certs == null || certs.length == 0) {
+//                    // no cert chain, so lets check if getCertificate gives us a
+//                    // result.
+//                    cert = keystore.getCertificate(alias);
+//                }
+//            }
+//
+//            if (certs == null && cert == null && this.trustStores != null) {
+//                // Now look into the trust stores
+//                Iterator trustStoreIter = this.trustStores.iterator();
+//                while (trustStoreIter.hasNext()) {
+//                    KeyStore store = (KeyStore) trustStoreIter.next();
+//                    certs = store.getCertificateChain(alias);
+//                    if (certs != null) {
+//                        break; // found the certs
+//                    } else {
+//                        cert = store.getCertificate(alias);
+//                    }
+//                }
+//            }
+//
+//            if (certs == null && cert == null && this.cacerts != null) {
+//                // There's a chance that there can only be a set of ca store
+//                certs = cacerts.getCertificateChain(alias);
+//                if (certs == null || certs.length == 0) {
+//                    // no cert chain, so lets check if getCertificate gives us a
+//                    // result.
+//                    cert = cacerts.getCertificate(alias);
+//                }
+//            }
+//
+//            if (cert != null) {
+//                certs = new Certificate[]{cert};
+//            } else if (certs == null) {
+//
+//                // At this pont we don't have certs or a cert
+//                return new X509Certificate[0];
+//            }
+//        } catch (KeyStoreException e) {
+//            throw new WSSecurityException(WSSecurityException.FAILURE, "keystore");
+//        }
+//
+//        X509Certificate[] x509certs = new X509Certificate[0];
+//        if (certs != null) {
+//            x509certs = new X509Certificate[certs.length];
+//            for (int i = 0; i < certs.length; i++) {
+//                x509certs[i] = (X509Certificate) certs[i];
+//            }
+//        }
+//        return x509certs;
+//    }
 
-    @Override
-    /**
-     * @see org.apache.ws.security.components.crypto.Crypto#getAliasForX509Cert(byte[])
-     */
-    public String getAliasForX509Cert(byte[] skiBytes) throws WSSecurityException {
-        try {
+//    @Override
+//    /**
+//     * @see org.apache.ws.security.components.crypto.Crypto#getAliasForX509Cert(java.security.cert.Certificate)
+//     */
+//    public String getAliasForX509Cert(Certificate cert) throws WSSecurityException {
+//        try {
+//            String alias = null;
+//
+//            if (this.keystore != null) {
+//                alias = keystore.getCertificateAlias(cert);
+//
+//                // Use brute force search
+//                if (alias == null) {
+//                    alias = findAliasForCert(this.keystore, cert);
+//                }
+//            }
+//
+//            // Check the trust stores
+//            if (alias == null && this.trustStores != null) {
+//                for (Iterator trustStoreIter = this.trustStores.iterator(); trustStoreIter
+//                        .hasNext(); ) {
+//                    KeyStore store = (KeyStore) trustStoreIter.next();
+//                    alias = store.getCertificateAlias(cert);
+//                    if (alias != null) {
+//                        break;
+//                    }
+//                }
+//            }
+//
+//            // Use brute force search on the trust stores
+//            if (alias == null && this.trustStores != null) {
+//                for (Iterator trustStoreIter = this.trustStores.iterator(); trustStoreIter
+//                        .hasNext(); ) {
+//                    KeyStore store = (KeyStore) trustStoreIter.next();
+//                    alias = this.findAliasForCert(store, cert);
+//                    if (alias != null) {
+//                        break;
+//                    }
+//                }
+//            }
+//
+//            if (alias == null && this.cacerts != null) {
+//                alias = cacerts.getCertificateAlias(cert);
+//
+//                // Use brute force search
+//                if (alias == null) {
+//                    alias = findAliasForCert(this.cacerts, cert);
+//                }
+//            }
+//
+//            if (alias != null) {
+//                return alias;
+//            }
+//
+//        } catch (KeyStoreException e) {
+//            throw new WSSecurityException(WSSecurityException.FAILURE, "keystore");
+//        }
+//
+//        return null;
+//    }
 
-            Certificate cert;
-            for (Enumeration e = keystore.aliases(); e.hasMoreElements(); ) {
-                String alias = (String) e.nextElement();
-                Certificate[] certs = this.getCertificates(alias);
-                if (certs == null || certs.length == 0) {
-                    return null;
-                } else {
-                    cert = certs[0];
-                }
-                byte[] data = getSKIBytesFromCert((X509Certificate) cert);
-                if (data.length != skiBytes.length) {
-                    continue;
-                }
-                if (Arrays.equals(data, skiBytes)) {
-                    return alias;
-                }
-            }
+//    private String findAliasForCert(KeyStore ks, Certificate cert) throws KeyStoreException {
+//        Enumeration e = ks.aliases();
+//        while (e.hasMoreElements()) {
+//            String alias = (String) e.nextElement();
+//            X509Certificate cert2 = (X509Certificate) ks.getCertificate(alias);
+//            if (cert2.equals(cert)) {
+//                return alias;
+//            }
+//        }
+//        return null;
+//    }
+//
+//    @Override
+//    /**
+//     * @see org.apache.ws.security.components.crypto.Crypto#getAliasForX509Cert(java.lang.String)
+//     */
+//    public String getAliasForX509Cert(String issuer) throws WSSecurityException {
+//        String alias = getAliasForX509Cert(issuer, null, false, this.keystore);
+//        if (alias == null) {
+//            Iterator<KeyStore> ite = this.trustStores.iterator();
+//            while (ite.hasNext()) {
+//                KeyStore ks = ite.next();
+//                alias = getAliasForX509Cert(issuer, null, false, ks);
+//                if (alias != null) {
+//                    break;
+//                }
+//            }
+//
+//        }
+//        return alias;
+//    }
 
-        } catch (KeyStoreException e) {
-            throw new WSSecurityException(WSSecurityException.FAILURE, "keystore");
-        }
-        return null;
-    }
+//    @Override
+//    /**
+//     * @see org.apache.ws.security.components.crypto.Crypto#getAliasForX509Cert(java.lang.String,
+//     * java.math.BigInteger)
+//     */
+//    public String getAliasForX509Cert(String issuer, BigInteger serialNumber)
+//            throws WSSecurityException {
+//        String alias = getAliasForX509Cert(issuer, serialNumber, true, this.keystore);
+//        if (alias == null) {
+//            Iterator<KeyStore> ite = this.trustStores.iterator();
+//            while (ite.hasNext()) {
+//                KeyStore ks = ite.next();
+//                alias = getAliasForX509Cert(issuer, serialNumber, true, ks);
+//                if (alias != null) {
+//                    break;
+//                }
+//            }
+//        }
+//        return alias;
+//    }
 
-    @Override
-    /**
-     * @see org.apache.ws.security.components.crypto.Crypto#getDefaultX509Alias()
-     */
-    public String getDefaultX509Alias() {
-        return this.properties.getProperty(PROP_ID_DEFAULT_ALIAS);
-    }
+//    @Override
+//    /**
+//     * @see org.apache.ws.security.components.crypto.Crypto#getAliasForX509Cert(byte[])
+//     */
+//    public String getAliasForX509Cert(byte[] skiBytes) throws WSSecurityException {
+//        try {
+//
+//            Certificate cert;
+//            for (Enumeration e = keystore.aliases(); e.hasMoreElements(); ) {
+//                String alias = (String) e.nextElement();
+//                Certificate[] certs = this.getCertificates(alias);
+//                if (certs == null || certs.length == 0) {
+//                    return null;
+//                } else {
+//                    cert = certs[0];
+//                }
+//                byte[] data = getSKIBytesFromCert((X509Certificate) cert);
+//                if (data.length != skiBytes.length) {
+//                    continue;
+//                }
+//                if (Arrays.equals(data, skiBytes)) {
+//                    return alias;
+//                }
+//            }
+//
+//        } catch (KeyStoreException e) {
+//            throw new WSSecurityException(WSSecurityException.FAILURE, "keystore");
+//        }
+//        return null;
+//    }
+//
+//    @Override
+//    /**
+//     * @see org.apache.ws.security.components.crypto.Crypto#getDefaultX509Alias()
+//     */
+//    public String getDefaultX509Alias() {
+//        return this.properties.getProperty(PROP_ID_DEFAULT_ALIAS);
+//    }
 
     @Override
     /**
@@ -526,51 +544,101 @@ public class ServerCrypto implements Crypto {
     }
 
     @Override
-    /**
-     * @see org.apache.ws.security.components.crypto.Crypto#getAliasForX509CertThumb(byte[])
-     */
-    public String getAliasForX509CertThumb(byte[] thumb) throws WSSecurityException {
-        Certificate cert;
-        MessageDigest sha;
-        try {
-            sha = MessageDigest.getInstance("SHA-1");
-        } catch (NoSuchAlgorithmException e1) {
-            throw new WSSecurityException(0, "noSHA1availabe");
-        }
-        try {
-            for (Enumeration e = keystore.aliases(); e.hasMoreElements(); ) {
-                String alias = (String) e.nextElement();
-                Certificate[] certs = this.getCertificates(alias);
-                if (certs == null || certs.length == 0) {
-                    return null;
-                } else {
-                    cert = certs[0];
-                }
-                sha.reset();
-                try {
-                    sha.update(cert.getEncoded());
-                } catch (CertificateEncodingException e1) {
-                    throw new WSSecurityException(WSSecurityException.SECURITY_TOKEN_UNAVAILABLE,
-                            "encodeError");
-                }
-                byte[] data = sha.digest();
+    public byte[] getBytesFromCertificates(X509Certificate[] x509Certificates) throws WSSecurityException {
+        return new byte[0];
+    }
 
-                if (Arrays.equals(data, thumb)) {
-                    return alias;
-                }
-            }
-        } catch (KeyStoreException e) {
-            throw new WSSecurityException(WSSecurityException.FAILURE, "keystore");
-        }
+    @Override
+    public X509Certificate[] getCertificatesFromBytes(byte[] bytes) throws WSSecurityException {
+        return new X509Certificate[0];
+    }
+
+    @Override
+    public X509Certificate[] getX509Certificates(CryptoType cryptoType) throws WSSecurityException {
+        return new X509Certificate[0];
+    }
+
+    @Override
+    public String getX509Identifier(X509Certificate x509Certificate) throws WSSecurityException {
         return null;
     }
 
     @Override
-    /**
-     * @see org.apache.ws.security.components.crypto.Crypto#getKeyStore()
-     */
-    public KeyStore getKeyStore() {
-        return this.keystore;
+    public PrivateKey getPrivateKey(X509Certificate x509Certificate, CallbackHandler callbackHandler) throws WSSecurityException {
+        return null;
+    }
+
+//    @Override
+//    /**
+//     * @see org.apache.ws.security.components.crypto.Crypto#getAliasForX509CertThumb(byte[])
+//     */
+//    public String getAliasForX509CertThumb(byte[] thumb) throws WSSecurityException {
+//        Certificate cert;
+//        MessageDigest sha;
+//        try {
+//            sha = MessageDigest.getInstance("SHA-1");
+//        } catch (NoSuchAlgorithmException e1) {
+//            throw new WSSecurityException(0, "noSHA1availabe");
+//        }
+//        try {
+//            for (Enumeration e = keystore.aliases(); e.hasMoreElements(); ) {
+//                String alias = (String) e.nextElement();
+//                Certificate[] certs = this.getCertificates(alias);
+//                if (certs == null || certs.length == 0) {
+//                    return null;
+//                } else {
+//                    cert = certs[0];
+//                }
+//                sha.reset();
+//                try {
+//                    sha.update(cert.getEncoded());
+//                } catch (CertificateEncodingException e1) {
+//                    throw new WSSecurityException(WSSecurityException.SECURITY_TOKEN_UNAVAILABLE,
+//                            "encodeError");
+//                }
+//                byte[] data = sha.digest();
+//
+//                if (Arrays.equals(data, thumb)) {
+//                    return alias;
+//                }
+//            }
+//        } catch (KeyStoreException e) {
+//            throw new WSSecurityException(WSSecurityException.FAILURE, "keystore");
+//        }
+//        return null;
+//    }
+
+//    @Override
+//    /**
+//     * @see org.apache.ws.security.components.crypto.Crypto#getKeyStore()
+//     */
+//    public KeyStore getKeyStore() {
+//        return this.keystore;
+//    }
+
+    @Override
+    public String getCryptoProvider() {
+        return null;
+    }
+
+    @Override
+    public void setCryptoProvider(String s) {
+
+    }
+
+    @Override
+    public String getDefaultX509Identifier() throws WSSecurityException {
+        return null;
+    }
+
+    @Override
+    public void setDefaultX509Identifier(String s) {
+
+    }
+
+    @Override
+    public void setCertificateFactory(String s, CertificateFactory certificateFactory) {
+
     }
 
     @Override
@@ -597,146 +665,146 @@ public class ServerCrypto implements Crypto {
         return certFact;
     }
 
-    @Override
-    /**
-     * @see org.apache.ws.security.components.crypto.Crypto#validateCertPath(java.security.cert.X509Certificate[])
-     */
-    public boolean validateCertPath(X509Certificate[] certs) throws WSSecurityException {
+//    @Override
+//    /**
+//     * @see org.apache.ws.security.components.crypto.Crypto#validateCertPath(java.security.cert.X509Certificate[])
+//     */
+//    public boolean validateCertPath(X509Certificate[] certs) throws WSSecurityException {
+//
+//        boolean result;
+//
+//        result = this.validateCertPath(this.keystore, certs);
+//
+//        if (!result) {
+//            Iterator trustStoreIter = this.trustStores.iterator();
+//            while (!result) {
+//                result = this.validateCertPath((KeyStore) trustStoreIter.next(), certs);
+//            }
+//        }
+//
+//        if (!result && cacerts != null) {
+//            result = this.validateCertPath(this.cacerts, certs);
+//        }
+//
+//        return result;
+//    }
 
-        boolean result;
+//    @Override
+//    /**
+//     * @see org.apache.ws.security.components.crypto.Crypto#getAliasesForDN(java.lang.String)
+//     */
+//    public String[] getAliasesForDN(String subjectDN) throws WSSecurityException {
+//
+//        // Store the aliases found
+//        List aliases = new Vector();
+//        Certificate cert;
+//
+//        // The DN to search the keystore for
+//        Vector subjectRDN = splitAndTrim(subjectDN);
+//
+//        // Look at every certificate in the keystore
+//        try {
+//            for (Enumeration e = keystore.aliases(); e.hasMoreElements(); ) {
+//                String alias = (String) e.nextElement();
+//
+//                Certificate[] certs = this.getCertificates(alias);
+//                if (certs == null || certs.length == 0) {
+//                    return new String[0];
+//                } else {
+//                    cert = certs[0];
+//                }
+//
+//                Vector foundRDN = splitAndTrim(((X509Certificate) cert).getSubjectDN()
+//                        .getName());
+//
+//                if (subjectRDN.equals(foundRDN)) {
+//                    aliases.add(alias);
+//                }
+//            }
+//        } catch (KeyStoreException e) {
+//            throw new WSSecurityException(WSSecurityException.FAILURE, "keystore");
+//        }
+//
+//        // Convert the vector into an array
+//        String[] result = new String[aliases.size()];
+//        for (int i = 0; i < aliases.size(); i++) {
+//            result[i] = (String) aliases.get(i);
+//        }
+//        return result;
+//
+//    }
 
-        result = this.validateCertPath(this.keystore, certs);
-
-        if (!result) {
-            Iterator trustStoreIter = this.trustStores.iterator();
-            while (!result) {
-                result = this.validateCertPath((KeyStore) trustStoreIter.next(), certs);
-            }
-        }
-
-        if (!result && cacerts != null) {
-            result = this.validateCertPath(this.cacerts, certs);
-        }
-
-        return result;
-    }
-
-    @Override
-    /**
-     * @see org.apache.ws.security.components.crypto.Crypto#getAliasesForDN(java.lang.String)
-     */
-    public String[] getAliasesForDN(String subjectDN) throws WSSecurityException {
-
-        // Store the aliases found
-        List aliases = new Vector();
-        Certificate cert;
-
-        // The DN to search the keystore for
-        Vector subjectRDN = splitAndTrim(subjectDN);
-
-        // Look at every certificate in the keystore
-        try {
-            for (Enumeration e = keystore.aliases(); e.hasMoreElements(); ) {
-                String alias = (String) e.nextElement();
-
-                Certificate[] certs = this.getCertificates(alias);
-                if (certs == null || certs.length == 0) {
-                    return new String[0];
-                } else {
-                    cert = certs[0];
-                }
-
-                Vector foundRDN = splitAndTrim(((X509Certificate) cert).getSubjectDN()
-                        .getName());
-
-                if (subjectRDN.equals(foundRDN)) {
-                    aliases.add(alias);
-                }
-            }
-        } catch (KeyStoreException e) {
-            throw new WSSecurityException(WSSecurityException.FAILURE, "keystore");
-        }
-
-        // Convert the vector into an array
-        String[] result = new String[aliases.size()];
-        for (int i = 0; i < aliases.size(); i++) {
-            result[i] = (String) aliases.get(i);
-        }
-        return result;
-
-    }
-
-    private String getAliasForX509Cert(String issuer, BigInteger serialNumber,
-                                       boolean useSerialNumber, KeyStore ks) throws WSSecurityException {
-        Vector issuerRDN = splitAndTrim(issuer);
-        X509Certificate x509cert;
-        Vector certRDN;
-        Certificate cert;
-        try {
-            for (Enumeration e = ks.aliases(); e.hasMoreElements(); ) {
-                String alias = (String) e.nextElement();
-                Certificate[] certs = this.getCertificates(alias);
-
-                if (certs == null || certs.length == 0) {
-                    return null;
-                } else {
-                    cert = certs[0];
-                }
-
-                x509cert = (X509Certificate) cert;
-                if (useSerialNumber && x509cert.getSerialNumber().compareTo(serialNumber) == 0) {
-                    certRDN = splitAndTrim(x509cert.getIssuerDN().getName());
-                    if (certRDN.equals(issuerRDN)) {
-                        return alias;
-                    }
-                }
-            }
-        } catch (KeyStoreException e) {
-            throw new WSSecurityException(WSSecurityException.FAILURE, "keystore");
-        }
-        return null;
-    }
-
-    private Vector splitAndTrim(String inString) {
-        X509NameTokenizer nmTokens = new X509NameTokenizer(inString);
-        Vector vr = new Vector();
-
-        while (nmTokens.hasMoreTokens()) {
-            vr.add(nmTokens.nextToken());
-        }
-        java.util.Collections.sort(vr);
-        return vr;
-    }
-
-    private boolean validateCertPath(KeyStore ks, Certificate[] certs) throws WSSecurityException {
-
-        try {
-
-            // Generate cert path
-            java.util.List certList = java.util.Arrays.asList(certs);
-            CertPath path = this.getCertificateFactory().generateCertPath(certList);
-
-            // Use the certificates in the keystore as TrustAnchors
-            PKIXParameters param = new PKIXParameters(ks);
-
-            // Do not check a revocation list
-            param.setRevocationEnabled(false);
-
-            // Verify the trust path using the above settings
-            String provider = properties
-                    .getProperty("org.apache.ws.security.crypto.merlin.cert.provider");
-            CertPathValidator certPathValidator;
-            if (provider == null || provider.length() == 0) {
-                certPathValidator = CertPathValidator.getInstance("PKIX");
-            } else {
-                certPathValidator = CertPathValidator.getInstance("PKIX", provider);
-            }
-            certPathValidator.validate(path, param);
-        } catch (NoSuchProviderException | NoSuchAlgorithmException | CertificateException |
-                InvalidAlgorithmParameterException | CertPathValidatorException | KeyStoreException ex) {
-            throw new WSSecurityException(WSSecurityException.FAILURE, "certpath",
-                    new Object[]{ex.getMessage()}, ex);
-        }
-        return true;
-    }
+//    private String getAliasForX509Cert(String issuer, BigInteger serialNumber,
+//                                       boolean useSerialNumber, KeyStore ks) throws WSSecurityException {
+//        Vector issuerRDN = splitAndTrim(issuer);
+//        X509Certificate x509cert;
+//        Vector certRDN;
+//        Certificate cert;
+//        try {
+//            for (Enumeration e = ks.aliases(); e.hasMoreElements(); ) {
+//                String alias = (String) e.nextElement();
+//                Certificate[] certs = this.getCertificates(alias);
+//
+//                if (certs == null || certs.length == 0) {
+//                    return null;
+//                } else {
+//                    cert = certs[0];
+//                }
+//
+//                x509cert = (X509Certificate) cert;
+//                if (useSerialNumber && x509cert.getSerialNumber().compareTo(serialNumber) == 0) {
+//                    certRDN = splitAndTrim(x509cert.getIssuerDN().getName());
+//                    if (certRDN.equals(issuerRDN)) {
+//                        return alias;
+//                    }
+//                }
+//            }
+//        } catch (KeyStoreException e) {
+//            throw new WSSecurityException(WSSecurityException.FAILURE, "keystore");
+//        }
+//        return null;
+//    }
+//
+//    private Vector splitAndTrim(String inString) {
+//        X509NameTokenizer nmTokens = new X509NameTokenizer(inString);
+//        Vector vr = new Vector();
+//
+//        while (nmTokens.hasMoreTokens()) {
+//            vr.add(nmTokens.nextToken());
+//        }
+//        java.util.Collections.sort(vr);
+//        return vr;
+//    }
+//
+//    private boolean validateCertPath(KeyStore ks, Certificate[] certs) throws WSSecurityException {
+//
+//        try {
+//
+//            // Generate cert path
+//            java.util.List certList = java.util.Arrays.asList(certs);
+//            CertPath path = this.getCertificateFactory().generateCertPath(certList);
+//
+//            // Use the certificates in the keystore as TrustAnchors
+//            PKIXParameters param = new PKIXParameters(ks);
+//
+//            // Do not check a revocation list
+//            param.setRevocationEnabled(false);
+//
+//            // Verify the trust path using the above settings
+//            String provider = properties
+//                    .getProperty("org.apache.ws.security.crypto.merlin.cert.provider");
+//            CertPathValidator certPathValidator;
+//            if (provider == null || provider.length() == 0) {
+//                certPathValidator = CertPathValidator.getInstance("PKIX");
+//            } else {
+//                certPathValidator = CertPathValidator.getInstance("PKIX", provider);
+//            }
+//            certPathValidator.validate(path, param);
+//        } catch (NoSuchProviderException | NoSuchAlgorithmException | CertificateException |
+//                InvalidAlgorithmParameterException | CertPathValidatorException | KeyStoreException ex) {
+//            throw new WSSecurityException(WSSecurityException.FAILURE, "certpath",
+//                    new Object[]{ex.getMessage()}, ex);
+//        }
+//        return true;
+//    }
 }

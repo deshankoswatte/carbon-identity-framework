@@ -26,6 +26,7 @@ import org.apache.ws.security.WSUsernameTokenPrincipal;
 import org.apache.ws.security.handler.WSHandlerConstants;
 import org.apache.ws.security.handler.WSHandlerResult;
 
+import java.util.List;
 import java.util.Vector;
 
 /**
@@ -57,14 +58,14 @@ public class WSS4JUtil {
         } else {
             for (int i = 0; i < results.size(); i++) {
                 WSHandlerResult rResult = (WSHandlerResult) results.get(i);
-                Vector wsSecEngineResults = rResult.getResults();
+                List<WSSecurityEngineResult> wsSecEngineResults = rResult.getResults();
                 for (int j = 0; j < wsSecEngineResults.size(); j++) {
                     WSSecurityEngineResult wser =
-                            (WSSecurityEngineResult) wsSecEngineResults.get(j);
+                            wsSecEngineResults.get(j);
 
                     Integer actInt = (Integer) wser
                             .get(WSSecurityEngineResult.TAG_ACTION);
-                    if (actInt.intValue() == WSConstants.UT) {
+                    if (actInt == WSConstants.UT) {
                         return (WSUsernameTokenPrincipal) wser
                                 .get(WSSecurityEngineResult.TAG_PRINCIPAL);
                     }

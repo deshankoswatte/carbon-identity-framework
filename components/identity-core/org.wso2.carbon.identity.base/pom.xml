@@ -58,6 +58,10 @@
                     <groupId>org.opensaml</groupId>
                     <artifactId>openws</artifactId>
                 </exclusion>
+                <exclusion>
+                    <groupId>org.apache.axis2</groupId>
+                    <artifactId>axis2-kernel</artifactId>
+                </exclusion>
             </exclusions>
         </dependency>
         <dependency>
